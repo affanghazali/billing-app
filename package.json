@@ -12,5 +12,8 @@
     "@cloudflare/workers-types": "^4.20241011.0",
     "typescript": "^5.5.2",
     "wrangler": "^3.60.3"
+  },
+  "dependencies": {
+    "durable-objects": "^0.0.2"
   }
 }
