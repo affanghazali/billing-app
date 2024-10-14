@@ -1,10 +1,9 @@
-import { handleCustomerRequest } from './controllers/CustomerController';
-import { handleSubscriptionRequest } from './controllers/SubscriptionController';
 import { CustomerManager } from './services/customer/CustomerManager';
 import { SubscriptionManager } from './services/subscription/SubscriptionManager';
+import { InvoiceManager } from './services/billing/InvoiceManager';
+import { BillingManager } from './services/billing/BillingManager';
 
-// Export the Durable Objects
-export { CustomerManager, SubscriptionManager };
+export { CustomerManager, SubscriptionManager, InvoiceManager, BillingManager };
 
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -26,6 +25,20 @@ export default {
 			const subscriptionObjectId = env.MY_SUBSCRIPTION_DO.idFromName('subscription-instance');
 			const subscriptionStub = env.MY_SUBSCRIPTION_DO.get(subscriptionObjectId);
 			return subscriptionStub.fetch(request);
+		}
+
+		// Routing for invoice-related requests
+		if (url.pathname === '/create-invoice' || url.pathname.startsWith('/invoices')) {
+			const invoiceObjectId = env.MY_INVOICE_DO.idFromName('invoice-instance');
+			const invoiceStub = env.MY_INVOICE_DO.get(invoiceObjectId);
+			return invoiceStub.fetch(request); // Correctly routed to InvoiceManager
+		}
+
+		// Routing for billing cycle-related requests
+		if (url.pathname === '/create-billing-cycle' || url.pathname.startsWith('/billing-cycles')) {
+			const billingObjectId = env.MY_BILLING_DO.idFromName('billing-instance');
+			const billingStub = env.MY_BILLING_DO.get(billingObjectId);
+			return billingStub.fetch(request); // Correctly routed to BillingManager
 		}
 
 		return new Response('Not found', { status: 404 });
