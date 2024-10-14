@@ -24,6 +24,11 @@ export class SubscriptionManager {
 			return this.assignSubscription(customerId, planId);
 		}
 
+		if (request.method === 'POST' && url.pathname === '/change-subscription') {
+			const { customerId, oldPlanId, newPlanId, cycleStartDate, cycleEndDate } = await request.json();
+			return this.handleSubscriptionChange(customerId, oldPlanId, newPlanId, new Date(cycleStartDate), new Date(cycleEndDate));
+		}
+
 		if (request.method === 'GET' && url.pathname.startsWith('/subscription')) {
 			const customerId = url.searchParams.get('customerId');
 			if (customerId) {
@@ -70,5 +75,55 @@ export class SubscriptionManager {
 		}
 
 		return handleSuccessResponse(customer, 'Customer subscription retrieved');
+	}
+
+	// Handle prorated billing for subscription change
+	async handleSubscriptionChange(
+		customerId: string,
+		oldPlanId: string,
+		newPlanId: string,
+		cycleStartDate: Date,
+		cycleEndDate: Date
+	): Promise<Response> {
+		try {
+			const daysInCycle = (cycleEndDate.getTime() - cycleStartDate.getTime()) / (1000 * 60 * 60 * 24);
+			const today = new Date();
+			const daysUsed = (today.getTime() - cycleStartDate.getTime()) / (1000 * 60 * 60 * 24);
+			const daysRemaining = daysInCycle - daysUsed;
+
+			// Get old and new plan pricing
+			const plans = await this.env.CUSTOMER_KV.get('plans', 'json');
+			const oldPlan = plans.find((plan: any) => plan.id === oldPlanId);
+			const newPlan = plans.find((plan: any) => plan.id === newPlanId);
+
+			if (!oldPlan || !newPlan) {
+				return handleErrorResponse(new Error('Plan not found'));
+			}
+
+			// Calculate prorated amounts
+			const proratedOldPlan = (oldPlan.price / daysInCycle) * daysUsed;
+			const proratedNewPlan = (newPlan.price / daysInCycle) * daysRemaining;
+
+			// Total amount after prorating
+			const totalAmountDue = proratedOldPlan + proratedNewPlan;
+
+			// Generate a new invoice or update the existing one
+			const invoiceData = {
+				id: crypto.randomUUID(), // Generating unique ID
+				customer_id: customerId,
+				amount: totalAmountDue,
+				due_date: new Date(), // Set appropriate due date
+				payment_status: 'pending',
+				payment_date: null,
+			};
+
+			const invoices = (await this.env.MY_BILLING_DO.get('invoices', 'json')) || [];
+			invoices.push(invoiceData);
+			await this.env.MY_BILLING_DO.put('invoices', JSON.stringify(invoices));
+
+			return handleSuccessResponse(invoiceData, `Prorated invoice generated for customer ${customerId}`, 201);
+		} catch (error) {
+			return handleErrorResponse(error);
+		}
 	}
 }
