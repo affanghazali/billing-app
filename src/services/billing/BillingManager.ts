@@ -10,6 +10,7 @@ export class BillingManager {
 		this.env = env;
 	}
 
+	// Handle all incoming requests to the BillingManager
 	async fetch(request: Request): Promise<Response> {
 		const url = new URL(request.url);
 
@@ -17,14 +18,23 @@ export class BillingManager {
 			try {
 				const billingCycleData = await request.json();
 
+				// Check if the customer exists
 				const customerExists = await this.checkCustomerExists(billingCycleData.customer_id);
 				if (!customerExists) {
-					return new Response('Customer not found', { status: 404 });
+					return new Response(JSON.stringify({ error: 'Customer not found' }), {
+						status: 404,
+						headers: { 'Content-Type': 'application/json' },
+					});
 				}
 
-				return this.createBillingCycle(billingCycleData);
+				// Create a new billing cycle
+				return await this.createBillingCycle(billingCycleData);
 			} catch (err) {
-				return new Response('Invalid request body', { status: 400 });
+				console.error('Error parsing request body:', err);
+				return new Response(JSON.stringify({ error: 'Invalid request body' }), {
+					status: 400,
+					headers: { 'Content-Type': 'application/json' },
+				});
 			}
 		}
 
@@ -32,12 +42,19 @@ export class BillingManager {
 		if (request.method === 'GET' && url.pathname.startsWith('/billing-cycles')) {
 			const customerId = url.searchParams.get('customerId');
 			if (customerId) {
-				return this.getBillingCyclesForCustomer(customerId);
+				return await this.getBillingCyclesForCustomer(customerId);
 			}
-			return new Response('Customer ID is required', { status: 400 });
+
+			return new Response(JSON.stringify({ error: 'Customer ID is required' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' },
+			});
 		}
 
-		return new Response('Not found', { status: 404 });
+		return new Response(JSON.stringify({ error: 'Not found' }), {
+			status: 404,
+			headers: { 'Content-Type': 'application/json' },
+		});
 	}
 
 	// Helper function to check if a customer exists in KV storage
@@ -53,7 +70,10 @@ export class BillingManager {
 		billingCycles.push(billingCycleData);
 		await this.state.storage.put('billing_cycles', billingCycles);
 
-		return new Response(`Billing cycle created for customer ${billingCycleData.customer_id}`, { status: 201 });
+		return new Response(JSON.stringify({ message: `Billing cycle created for customer ${billingCycleData.customer_id}` }), {
+			status: 201,
+			headers: { 'Content-Type': 'application/json' },
+		});
 	}
 
 	// Fetch all billing cycles for a customer
@@ -62,9 +82,15 @@ export class BillingManager {
 		const customerCycles = billingCycles.filter((cycle) => cycle.customer_id === customerId);
 
 		if (customerCycles.length === 0) {
-			return new Response('No billing cycles found for this customer', { status: 404 });
+			return new Response(JSON.stringify({ error: 'No billing cycles found for this customer' }), {
+				status: 404,
+				headers: { 'Content-Type': 'application/json' },
+			});
 		}
 
-		return new Response(JSON.stringify(customerCycles), { status: 200 });
+		return new Response(JSON.stringify(customerCycles), {
+			status: 200,
+			headers: { 'Content-Type': 'application/json' },
+		});
 	}
 }

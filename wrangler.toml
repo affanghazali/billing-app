@@ -77,6 +77,16 @@ class_name = "BillingManager"
 tag = "v1"
 new_classes = ["CustomerManager", "SubscriptionManager", "BillingManager", "InvoiceManager"]
 
+# cron
+name = "billing-app"
+main = "src/index.ts"
+compatibility_date = "2024-10-11"
+
+# Correct cron trigger format
+[triggers]
+crons = ["0 0 * * *"]
+
+
 # Bind a Hyperdrive configuration. Use to accelerate access to your existing databases from Cloudflare Workers.
 # Docs: https://developers.cloudflare.com/workers/wrangler/configuration/#hyperdrive
 # [[hyperdrive]]

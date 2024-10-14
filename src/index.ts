@@ -2,6 +2,7 @@ import { CustomerManager } from './services/customer/CustomerManager';
 import { SubscriptionManager } from './services/subscription/SubscriptionManager';
 import { InvoiceManager } from './services/billing/InvoiceManager';
 import { BillingManager } from './services/billing/BillingManager';
+import { handleScheduledEvent } from './cron/BillingScheduler';
 
 export { CustomerManager, SubscriptionManager, InvoiceManager, BillingManager };
 
@@ -41,6 +42,16 @@ export default {
 			return billingStub.fetch(request); // Correctly routed to BillingManager
 		}
 
+		if (url.pathname === '/test-cron') {
+			await handleScheduledEvent(env); // Manually trigger the cron logic
+			return new Response('Cron job executed successfully', { status: 200 });
+		}
+
 		return new Response('Not found', { status: 404 });
 	},
 };
+
+// Handling scheduled events (cron jobs)
+addEventListener('scheduled', (event) => {
+	event.waitUntil(handleScheduledEvent(event.scheduledTime));
+});
