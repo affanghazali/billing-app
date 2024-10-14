@@ -1,5 +1,6 @@
 import { DurableObjectState } from '@cloudflare/workers-types';
 import { Customer } from './customerTypes';
+import { handleErrorResponse, handleSuccessResponse } from '../../helper';
 
 export class CustomerManager {
 	state: DurableObjectState;
@@ -26,7 +27,7 @@ export class CustomerManager {
 			return this.listCustomers();
 		}
 
-		return new Response('Not found', { status: 404 });
+		return handleErrorResponse(new Error('Not found'));
 	}
 
 	// Create a new customer and store it in KV
@@ -35,7 +36,7 @@ export class CustomerManager {
 
 		const existingCustomer = customers.find((c) => c.email === data.email);
 		if (existingCustomer) {
-			return new Response('Customer with this email already exists', { status: 400 });
+			return handleErrorResponse(new Error('Customer with this email already exists'));
 		}
 
 		const newCustomer: Customer = {
@@ -49,23 +50,24 @@ export class CustomerManager {
 		customers.push(newCustomer);
 		await this.env.CUSTOMER_KV.put('customers', JSON.stringify(customers));
 
-		return new Response(`Customer ${data.name} created successfully`, { status: 201 });
+		return handleSuccessResponse(newCustomer, `Customer ${data.name} created successfully`, 201);
 	}
 
 	// Fetch a specific customer from KV
 	async getCustomer(customerId: string): Promise<Response> {
 		const customers: Customer[] = (await this.env.CUSTOMER_KV.get('customers', 'json')) || [];
-
 		const customer = customers.find((c) => c.id === customerId);
+
 		if (!customer) {
-			return new Response('Customer not found', { status: 404 });
+			return handleErrorResponse(new Error('Customer not found'));
 		}
-		return new Response(JSON.stringify(customer), { status: 200 });
+
+		return handleSuccessResponse(customer, 'Customer retrieved');
 	}
 
 	// List all customers from KV
 	async listCustomers(): Promise<Response> {
 		const customers: Customer[] = (await this.env.CUSTOMER_KV.get('customers', 'json')) || [];
-		return new Response(JSON.stringify(customers), { status: 200 });
+		return handleSuccessResponse(customers, 'Customers retrieved');
 	}
 }

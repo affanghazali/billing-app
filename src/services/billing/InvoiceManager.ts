@@ -1,5 +1,6 @@
 import { DurableObjectState } from '@cloudflare/workers-types';
 import { Invoice } from './billingTypes';
+import { handleErrorResponse, handleSuccessResponse, checkCustomerExists } from '../../helper';
 
 export class InvoiceManager {
 	state: DurableObjectState;
@@ -16,15 +17,15 @@ export class InvoiceManager {
 		if (request.method === 'POST' && url.pathname === '/create-invoice') {
 			try {
 				const invoiceData = await request.json();
+				const customerExists = await checkCustomerExists(this.env, invoiceData.customer_id);
 
-				const customerExists = await this.checkCustomerExists(invoiceData.customer_id);
 				if (!customerExists) {
-					return new Response('Customer not found', { status: 404 });
+					return handleErrorResponse(new Error('Customer not found'));
 				}
 
 				return this.createInvoice(invoiceData);
-			} catch (err) {
-				return new Response('Invalid request body', { status: 400 });
+			} catch (error) {
+				return handleErrorResponse(error);
 			}
 		}
 
@@ -33,31 +34,19 @@ export class InvoiceManager {
 			if (customerId) {
 				return this.getInvoicesForCustomer(customerId);
 			}
-			return new Response('Customer ID is required', { status: 400 });
+			return handleErrorResponse(new Error('Customer ID is required'));
 		}
 
-		return new Response('Not found', { status: 404 });
-	}
-
-	// Helper function to check if a customer exists in KV storage
-	async checkCustomerExists(customerId: string): Promise<boolean> {
-		const customers = (await this.env.CUSTOMER_KV.get('customers', 'json')) || [];
-
-		// Add logging to check customer data
-		console.log('Retrieved customers from KV:', customers);
-		console.log('Looking for customerId:', customerId);
-
-		return customers.some((customer: any) => customer.id === customerId);
+		return handleErrorResponse(new Error('Not found'));
 	}
 
 	// Create a new invoice for a customer
 	async createInvoice(invoiceData: Invoice): Promise<Response> {
 		const invoices: Invoice[] = (await this.state.storage.get('invoices')) || [];
-
 		invoices.push(invoiceData);
 		await this.state.storage.put('invoices', invoices);
 
-		return new Response(`Invoice created for customer ${invoiceData.customer_id}`, { status: 201 });
+		return handleSuccessResponse(invoiceData, `Invoice created for customer ${invoiceData.customer_id}`, 201);
 	}
 
 	// Fetch all invoices for a customer
@@ -66,9 +55,9 @@ export class InvoiceManager {
 		const customerInvoices = invoices.filter((invoice) => invoice.customer_id === customerId);
 
 		if (customerInvoices.length === 0) {
-			return new Response('No invoices found for this customer', { status: 404 });
+			return handleErrorResponse(new Error('No invoices found for this customer'));
 		}
 
-		return new Response(JSON.stringify(customerInvoices), { status: 200 });
+		return handleSuccessResponse(customerInvoices, 'Invoices retrieved');
 	}
 }

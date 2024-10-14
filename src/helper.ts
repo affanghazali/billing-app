@@ -1,3 +1,27 @@
+// Reusable error response handler
+export function handleErrorResponse(error: any): Response {
+	const responseBody = { error: error.message || 'An error occurred' };
+	return new Response(JSON.stringify(responseBody), {
+		status: 500,
+		headers: { 'Content-Type': 'application/json' },
+	});
+}
+
+// Reusable success response handler
+export function handleSuccessResponse(data: any, message: string = 'Success', status: number = 200): Response {
+	const responseBody = { message, data };
+	return new Response(JSON.stringify(responseBody), {
+		status,
+		headers: { 'Content-Type': 'application/json' },
+	});
+}
+
+// Reusable function to check if customer exists in KV storage
+export async function checkCustomerExists(env: Env, customerId: string): Promise<boolean> {
+	const customers = (await env.CUSTOMER_KV.get('customers', 'json')) || [];
+	return customers.some((customer: any) => customer.id === customerId);
+}
+
 // Fetch customers from KV storage
 export async function fetchCustomers(env: Env) {
 	const customers = await env.CUSTOMER_KV.get('customers', 'json');

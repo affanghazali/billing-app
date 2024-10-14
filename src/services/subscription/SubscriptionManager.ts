@@ -1,5 +1,6 @@
 import { DurableObjectState } from '@cloudflare/workers-types';
 import { SubscriptionPlan } from './subscriptionTypes';
+import { handleErrorResponse, handleSuccessResponse, checkCustomerExists } from '../../helper';
 
 export class SubscriptionManager {
 	state: DurableObjectState;
@@ -30,7 +31,7 @@ export class SubscriptionManager {
 			}
 		}
 
-		return new Response('Not found', { status: 404 });
+		return handleErrorResponse(new Error('Not found'));
 	}
 
 	// Create a new subscription plan
@@ -38,16 +39,17 @@ export class SubscriptionManager {
 		const plans: SubscriptionPlan[] = (await this.state.storage.get('plans')) || [];
 		plans.push(data);
 		await this.state.storage.put('plans', plans);
-		return new Response('Subscription plan created successfully', { status: 201 });
+
+		return handleSuccessResponse(data, 'Subscription plan created successfully', 201);
 	}
 
 	// Assign a subscription plan to a customer
 	async assignSubscription(customerId: string, planId: string): Promise<Response> {
-		const customers: Customer[] = (await this.env.CUSTOMER_KV.get('customers', 'json')) || [];
+		const customers = (await this.env.CUSTOMER_KV.get('customers', 'json')) || [];
 
 		const customer = customers.find((c) => c.id === customerId);
 		if (!customer) {
-			return new Response('Customer not found', { status: 404 });
+			return handleErrorResponse(new Error('Customer not found'));
 		}
 
 		customer.subscription_plan_id = planId;
@@ -55,16 +57,18 @@ export class SubscriptionManager {
 
 		await this.env.CUSTOMER_KV.put('customers', JSON.stringify(customers));
 
-		return new Response(`Subscription assigned to customer ${customer.name}`, { status: 200 });
+		return handleSuccessResponse(customer, `Subscription assigned to customer ${customer.name}`);
 	}
 
 	// Get customer subscription details
 	async getCustomerSubscription(customerId: string): Promise<Response> {
-		const customers: Customer[] = (await this.env.CUSTOMER_KV.get('customers', 'json')) || [];
+		const customers = (await this.env.CUSTOMER_KV.get('customers', 'json')) || [];
 		const customer = customers.find((c) => c.id === customerId);
+
 		if (!customer) {
-			return new Response('Customer not found', { status: 404 });
+			return handleErrorResponse(new Error('Customer not found'));
 		}
-		return new Response(JSON.stringify(customer), { status: 200 });
+
+		return handleSuccessResponse(customer, 'Customer subscription retrieved');
 	}
 }
