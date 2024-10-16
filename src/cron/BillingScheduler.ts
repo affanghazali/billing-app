@@ -8,10 +8,8 @@ export async function handleScheduledEvent(env: Env) {
 	for (const customer of customers) {
 		if (isCustomerActive(customer)) {
 			const billingCycles = await fetchBillingCycles(env, customer.id);
-
-			if (billingCycles && Array.isArray(billingCycles)) {
-				const currentCycle = billingCycles.find((cycle: any) => cycle.customer_id === customer.id);
-
+			if (billingCycles && Array.isArray(billingCycles.data)) {
+				const currentCycle = billingCycles.data.find((cycle: any) => cycle.customer_id === customer.id);
 				if (isBillingCycleEnding(currentCycle)) {
 					await generateInvoiceForCustomer(env, customer.id, customer.subscription_plan_id);
 				}

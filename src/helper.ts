@@ -80,11 +80,16 @@ export function isBillingCycleEnding(currentCycle: any): boolean {
 	return now >= cycleEndDate;
 }
 
+// Generate customer invoices
 export async function generateInvoiceForCustomer(env: Env, customerId: string, planId: string): Promise<void> {
 	const plans = await env.CUSTOMER_KV.get('plans', 'json');
-	const customerPlan = plans.find((plan) => plan.id === planId);
+	const customerPlan = plans.find((plan: any) => plan.id === planId);
 
-	// Generate random due date within the next month for testing/assumption
+	if (!customerPlan) {
+		console.error(`Plan with id ${planId} not found for customer ${customerId}`);
+		return;
+	}
+
 	const randomDays = Math.floor(Math.random() * 30) + 1;
 	const randomDueDate = new Date();
 	randomDueDate.setDate(randomDueDate.getDate() + randomDays);
@@ -98,9 +103,33 @@ export async function generateInvoiceForCustomer(env: Env, customerId: string, p
 		payment_date: null,
 	};
 
-	const invoices = (await env.MY_BILLING_DO.get('invoices', 'json')) || [];
+	const invoiceObjectId = env.MY_INVOICE_DO.idFromName('invoice-instance');
+	const invoiceStub = env.MY_INVOICE_DO.get(invoiceObjectId);
+
+	const response = await invoiceStub.fetch(new Request('https://fake-url/invoices', { method: 'GET' }));
+
+	let invoices = [];
+	if (response.ok) {
+		try {
+			invoices = await response.json();
+			if (!Array.isArray(invoices)) {
+				invoices = [];
+			}
+		} catch (error) {
+			console.error('Failed to parse invoices response:', error);
+			invoices = [];
+		}
+	}
+
 	invoices.push(invoiceData);
-	await env.MY_BILLING_DO.put('invoices', JSON.stringify(invoices));
+
+	await invoiceStub.fetch(
+		new Request('https://fake-url/invoices', {
+			method: 'POST',
+			body: JSON.stringify(invoices),
+		})
+	);
 
 	console.log(`Invoice generated for customer ${customerId}`);
+	console.log('Invoice: ', invoiceData);
 }

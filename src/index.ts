@@ -22,6 +22,8 @@ export default {
 			url.pathname === '/create-subscription-plan' ||
 			url.pathname === '/assign-subscription' ||
 			url.pathname === '/change-subscription' ||
+			url.pathname === '/get-plans' ||
+			url.pathname === '/set-plans' ||
 			url.pathname.startsWith('/subscription')
 		) {
 			const subscriptionObjectId = env.MY_SUBSCRIPTION_DO.idFromName('subscription-instance');

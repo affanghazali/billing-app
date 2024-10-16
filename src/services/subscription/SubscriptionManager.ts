@@ -36,10 +36,17 @@ export class SubscriptionManager {
 			}
 		}
 
+		if (url.pathname === '/get-plans') {
+			return this.getPlans();
+		}
+
+		if (url.pathname === '/set-plans') {
+			return this.setPlans();
+		}
+
 		return handleErrorResponse(new Error('Not found'));
 	}
 
-	// Create a new subscription plan
 	async createSubscriptionPlan(data: SubscriptionPlan): Promise<Response> {
 		const plans: SubscriptionPlan[] = (await this.state.storage.get('plans')) || [];
 		plans.push(data);
@@ -48,7 +55,6 @@ export class SubscriptionManager {
 		return handleSuccessResponse(data, 'Subscription plan created successfully', 201);
 	}
 
-	// Assign a subscription plan to a customer
 	async assignSubscription(customerId: string, planId: string): Promise<Response> {
 		const customers = (await this.env.CUSTOMER_KV.get('customers', 'json')) || [];
 
@@ -65,7 +71,6 @@ export class SubscriptionManager {
 		return handleSuccessResponse(customer, `Subscription assigned to customer ${customer.name}`);
 	}
 
-	// Get customer subscription details
 	async getCustomerSubscription(customerId: string): Promise<Response> {
 		const customers = (await this.env.CUSTOMER_KV.get('customers', 'json')) || [];
 		const customer = customers.find((c) => c.id === customerId);
@@ -77,7 +82,6 @@ export class SubscriptionManager {
 		return handleSuccessResponse(customer, 'Customer subscription retrieved');
 	}
 
-	// Handle prorated billing for subscription change
 	async handleSubscriptionChange(
 		customerId: string,
 		oldPlanId: string,
@@ -91,7 +95,6 @@ export class SubscriptionManager {
 			const daysUsed = (today.getTime() - cycleStartDate.getTime()) / (1000 * 60 * 60 * 24);
 			const daysRemaining = daysInCycle - daysUsed;
 
-			// Get old and new plan pricing
 			const plans = await this.env.CUSTOMER_KV.get('plans', 'json');
 			const oldPlan = plans.find((plan: any) => plan.id === oldPlanId);
 			const newPlan = plans.find((plan: any) => plan.id === newPlanId);
@@ -100,30 +103,73 @@ export class SubscriptionManager {
 				return handleErrorResponse(new Error('Plan not found'));
 			}
 
-			// Calculate prorated amounts
 			const proratedOldPlan = (oldPlan.price / daysInCycle) * daysUsed;
 			const proratedNewPlan = (newPlan.price / daysInCycle) * daysRemaining;
 
-			// Total amount after prorating
 			const totalAmountDue = proratedOldPlan + proratedNewPlan;
 
-			// Generate a new invoice or update the existing one
 			const invoiceData = {
-				id: crypto.randomUUID(), // Generating unique ID
+				id: crypto.randomUUID(),
 				customer_id: customerId,
 				amount: totalAmountDue,
-				due_date: new Date(), // Set appropriate due date
+				due_date: new Date(),
 				payment_status: 'pending',
 				payment_date: null,
 			};
 
-			const invoices = (await this.env.MY_BILLING_DO.get('invoices', 'json')) || [];
+			const billingObjectId = this.env.MY_BILLING_DO.idFromName('billing-instance');
+			const billingStub = this.env.MY_BILLING_DO.get(billingObjectId);
+
+			const response = await billingStub.fetch(new Request('https://fake-url/invoices', { method: 'GET' }));
+			let invoices = [];
+
+			if (response.ok) {
+				invoices = await response.json();
+				if (!Array.isArray(invoices)) {
+					invoices = [];
+				}
+			}
+
 			invoices.push(invoiceData);
-			await this.env.MY_BILLING_DO.put('invoices', JSON.stringify(invoices));
+
+			await billingStub.fetch(
+				new Request('https://fake-url/invoices', {
+					method: 'POST',
+					body: JSON.stringify(invoices),
+				})
+			);
 
 			return handleSuccessResponse(invoiceData, `Prorated invoice generated for customer ${customerId}`, 201);
 		} catch (error) {
 			return handleErrorResponse(error);
 		}
+	}
+
+	async setPlans(): Promise<Response> {
+		const plans = [
+			{ id: '1', name: 'Basic Plan', billing_cycle: 'monthly', price: 10, status: 'active' },
+			{ id: '2', name: 'Premium Plan', billing_cycle: 'monthly', price: 20, status: 'active' },
+			{ id: '3', name: 'Enterprise Plan', billing_cycle: 'yearly', price: 50, status: 'active' },
+		];
+
+		await this.env.CUSTOMER_KV.put('plans', JSON.stringify(plans));
+
+		return new Response('Plans stored in KV', { status: 201 });
+	}
+
+	async getPlans(): Promise<Response> {
+		let plans = plansRaw ? JSON.parse(plansRaw) : null;
+
+		if (!plans || plans.length === 0) {
+			return new Response(JSON.stringify({ error: 'No plans found' }), {
+				status: 404,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+
+		return new Response(JSON.stringify(plans), {
+			status: 200,
+			headers: { 'Content-Type': 'application/json' },
+		});
 	}
 }
