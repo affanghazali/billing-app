@@ -4,7 +4,7 @@ export interface Invoice {
 	plan_id: string;
 	amount_due: number;
 	due_date: string;
-	status: 'paid' | 'pending' | 'failed';
+	status: 'paid' | 'generated' | 'failed';
 	created_at: string;
 	paid_at?: string;
 }

@@ -68,8 +68,10 @@ export class PaymentManager {
 			if (paymentAmount >= invoice.amount_due) {
 				invoice.status = 'paid';
 				invoice.paid_at = new Date().toISOString();
+				await this.notifyPaymentSuccess(invoice.customer_id, invoice);
 				console.log('Updated invoice:', invoice);
 			} else {
+				await this.notifyPaymentFailure(invoice.customer_id, invoice);
 				return handleErrorResponse(new Error('Payment amount is insufficient'));
 			}
 
@@ -129,6 +131,7 @@ export class PaymentManager {
 				// Simulate a successful retry for failed invoices
 				invoice.status = 'paid';
 				invoice.paid_at = new Date().toISOString();
+				await this.notifyPaymentSuccess(invoice.customer_id, invoice);
 			}
 
 			await invoiceStub.fetch(
@@ -142,5 +145,40 @@ export class PaymentManager {
 		} catch (error) {
 			return handleErrorResponse(error);
 		}
+	}
+
+	// Notify customer of payment success
+	async notifyPaymentSuccess(customerId: string, invoice: any): Promise<void> {
+		const customerEmail = await this.getCustomerEmail(customerId);
+		if (!customerEmail) {
+			console.error(`Failed to send payment success notification: Customer ${customerId} does not have a valid email.`);
+			return;
+		}
+
+		const subject = `Payment Success for Invoice #${invoice.id}`;
+		const content = `Your payment of ${invoice.amount_due} has been successfully processed for invoice #${invoice.id}.`;
+
+		await sendEmail(this.env, customerEmail, subject, content);
+	}
+
+	// Notify customer of payment failure
+	async notifyPaymentFailure(customerId: string, invoice: any): Promise<void> {
+		const customerEmail = await this.getCustomerEmail(customerId);
+		if (!customerEmail) {
+			console.error(`Failed to send payment failure notification: Customer ${customerId} does not have a valid email.`);
+			return;
+		}
+
+		const subject = `Payment Failed for Invoice #${invoice.id}`;
+		const content = `Your payment for invoice #${invoice.id} has failed. Please try again.`;
+
+		await sendEmail(this.env, customerEmail, subject, content);
+	}
+
+	// Helper to fetch the customer email
+	async getCustomerEmail(customerId: string): Promise<string | null> {
+		const customers = (await this.env.CUSTOMER_KV.get('customers', 'json')) || [];
+		const customer = customers.find((c: any) => c.id === customerId);
+		return customer ? customer.email : null;
 	}
 }

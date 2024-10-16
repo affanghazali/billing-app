@@ -1,6 +1,6 @@
 import { DurableObjectState } from '@cloudflare/workers-types';
 import { Invoice } from './billingTypes';
-import { handleErrorResponse, handleSuccessResponse, checkCustomerExists } from '../../helper';
+import { handleErrorResponse, handleSuccessResponse, checkCustomerExists, sendEmail } from '../../helper';
 
 export class InvoiceManager {
 	state: DurableObjectState;
@@ -23,7 +23,11 @@ export class InvoiceManager {
 					return handleErrorResponse(new Error('Customer not found'));
 				}
 
-				return this.createInvoice(invoiceData);
+				const response = await this.createInvoice(invoiceData);
+
+				await this.notifyInvoiceCreated(invoiceData.customer_id, invoiceData);
+
+				return response;
 			} catch (error) {
 				return handleErrorResponse(error);
 			}
@@ -105,5 +109,27 @@ export class InvoiceManager {
 		await this.state.storage.put('invoices', invoices);
 
 		return handleSuccessResponse(invoices, 'Invoices updated successfully');
+	}
+
+	// Notify the customer that an invoice has been created
+	async notifyInvoiceCreated(customerId: string, invoice: Invoice): Promise<void> {
+		const customerEmail = await this.getCustomerEmail(customerId); // Fetch customer's email
+
+		if (!customerEmail) {
+			console.error(`Failed to send invoice notification: Customer ${customerId} does not have a valid email.`);
+			return;
+		}
+
+		const subject = `Invoice #${invoice.id} Created`;
+		const content = `An invoice has been generated for you. Amount Due: ${invoice.amount_due}. Due Date: ${invoice.due_date}.`;
+
+		await sendEmail(this.env, customerEmail, subject, content);
+	}
+
+	// Helper to fetch the customer email
+	async getCustomerEmail(customerId: string): Promise<string | null> {
+		const customers = (await this.env.CUSTOMER_KV.get('customers', 'json')) || [];
+		const customer = customers.find((c: any) => c.id === customerId);
+		return customer ? customer.email : null;
 	}
 }

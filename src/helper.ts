@@ -1,3 +1,35 @@
+// helper for sending email notification
+export async function sendEmail(env: Env, to: string, subject: string, content: string): Promise<Response> {
+	try {
+		const sendGridApiKey = env.SENDGRID_API_KEY;
+		const emailData = {
+			personalizations: [{ to: [{ email: to }] }],
+			from: { email: 'ghazaliaffan@gmail.com' },
+			subject,
+			content: [{ type: 'text/plain', value: content }],
+		};
+
+		const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${sendGridApiKey}`,
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify(emailData),
+		});
+
+		if (!response.ok) {
+			console.error('Failed to send email', await response.text());
+			return new Response('Failed to send email', { status: 500 });
+		}
+
+		return new Response('Email sent successfully', { status: 200 });
+	} catch (error) {
+		console.error('Error sending email:', error);
+		return new Response('Error sending email', { status: 500 });
+	}
+}
+
 // Reusable error response handler
 export function handleErrorResponse(error: any): Response {
 	const responseBody = { error: error.message || 'An error occurred' };
