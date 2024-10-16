@@ -1,6 +1,7 @@
 import { fetchCustomers, isCustomerActive, fetchBillingCycles, isBillingCycleEnding, generateInvoiceForCustomer } from '../helper';
 
-export async function handleScheduledEvent(env: Env) {
+export async function handleInvoiceGeneration(env: Env) {
+	console.log('Running scheduled event to generate customer invoices');
 	const customers = await fetchCustomers(env);
 
 	if (!customers) return;

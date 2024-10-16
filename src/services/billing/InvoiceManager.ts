@@ -29,12 +29,28 @@ export class InvoiceManager {
 			}
 		}
 
+		// Endpoint to fetch all invoices for a customer
 		if (request.method === 'GET' && url.pathname.startsWith('/invoices')) {
 			const customerId = url.searchParams.get('customerId');
 			if (customerId) {
 				return this.getInvoicesForCustomer(customerId);
 			}
+
+			// New route to get all invoices
+			if (url.pathname === '/invoices/all') {
+				return this.getAllInvoices(); // Fetch all invoices without filtering by customerId
+			}
 			return handleErrorResponse(new Error('Customer ID is required'));
+		}
+
+		// New route to update invoices
+		if (request.method === 'PUT' && url.pathname === '/invoices/update') {
+			try {
+				const updatedInvoices = await request.json();
+				return this.updateInvoices(updatedInvoices.data); // Expecting invoices in 'data' field
+			} catch (error) {
+				return handleErrorResponse(new Error('Invalid request body'));
+			}
 		}
 
 		return handleErrorResponse(new Error('Not found'));
@@ -59,5 +75,35 @@ export class InvoiceManager {
 		}
 
 		return handleSuccessResponse(customerInvoices, 'Invoices retrieved');
+	}
+
+	// Fetch all invoices (new method)
+	async getAllInvoices(): Promise<Response> {
+		const invoices: Invoice[] = (await this.state.storage.get('invoices')) || [];
+
+		if (invoices.length === 0) {
+			return handleErrorResponse(new Error('No invoices found'));
+		}
+
+		return handleSuccessResponse(invoices, 'All invoices retrieved');
+	}
+
+	async updateInvoices(updatedInvoices: Invoice[]): Promise<Response> {
+		if (!updatedInvoices || updatedInvoices.length === 0) {
+			return handleErrorResponse(new Error('No invoices to update'));
+		}
+
+		const invoices: Invoice[] = (await this.state.storage.get('invoices')) || [];
+
+		for (const updatedInvoice of updatedInvoices) {
+			const index = invoices.findIndex((inv) => inv.id === updatedInvoice.id);
+			if (index !== -1) {
+				invoices[index] = updatedInvoice;
+			}
+		}
+
+		await this.state.storage.put('invoices', invoices);
+
+		return handleSuccessResponse(invoices, 'Invoices updated successfully');
 	}
 }

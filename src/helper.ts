@@ -104,9 +104,12 @@ export async function generateInvoiceForCustomer(env: Env, customerId: string, p
 	};
 
 	const invoiceObjectId = env.MY_INVOICE_DO.idFromName('invoice-instance');
+	console.log('invoiceObjectId: ', invoiceObjectId);
 	const invoiceStub = env.MY_INVOICE_DO.get(invoiceObjectId);
+	console.log('invoiceStub: ', invoiceStub);
 
 	const response = await invoiceStub.fetch(new Request('https://fake-url/invoices', { method: 'GET' }));
+	console.log('response: ', response);
 
 	let invoices = [];
 	if (response.ok) {

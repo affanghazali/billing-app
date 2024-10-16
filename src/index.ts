@@ -2,9 +2,12 @@ import { CustomerManager } from './services/customer/CustomerManager';
 import { SubscriptionManager } from './services/subscription/SubscriptionManager';
 import { InvoiceManager } from './services/billing/InvoiceManager';
 import { BillingManager } from './services/billing/BillingManager';
-import { handleScheduledEvent } from './cron/BillingScheduler';
+import { PaymentManager } from './services/payment/PaymentManager';
+import { handleInvoiceGeneration } from './cron/BillingScheduler';
+import { handleRetryFailedPayments } from './cron/PaymentScheduler';
+import { handleScheduledEvent } from './cron/MainScheduler';
 
-export { CustomerManager, SubscriptionManager, InvoiceManager, BillingManager };
+export { CustomerManager, SubscriptionManager, InvoiceManager, BillingManager, PaymentManager };
 
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -45,9 +48,21 @@ export default {
 			return billingStub.fetch(request); // Correctly routed to BillingManager
 		}
 
-		if (url.pathname === '/test-cron') {
-			await handleScheduledEvent(env); // Manually trigger the cron logic
-			return new Response('Cron job executed successfully', { status: 200 });
+		if (url.pathname === '/record-payment' || url.pathname === '/retry-failed-payments') {
+			const paymentObjectId = env.MY_PAYMENT_DO.idFromName('payment-instance');
+			const paymentStub = env.MY_PAYMENT_DO.get(paymentObjectId);
+			return paymentStub.fetch(request);
+		}
+
+		// Manually trigger the cron logic for testing in local env
+		if (url.pathname === '/generate-customer-invoices-cron') {
+			await handleInvoiceGeneration(env);
+			return new Response('generate-customer-invoices-cron job executed successfully', { status: 200 });
+		}
+
+		if (url.pathname === 'retry-failed-payments-cron') {
+			await handleRetryFailedPayments(env);
+			return new Response('retry-failed-payments-cron job executed successfully', { status: 200 });
 		}
 
 		return new Response('Not found', { status: 404 });
