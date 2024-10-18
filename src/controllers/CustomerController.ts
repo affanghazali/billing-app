@@ -5,11 +5,12 @@ export async function handleCustomerRequest(request: Request, env: Env, ctx: Exe
 
 	switch (request.method) {
 		case 'POST':
-			return customerManager.createCustomer(await request.json());
+			const data = await request.json();
+			return customerManager.createCustomer(env, data);
 		case 'GET':
 			const url = new URL(request.url);
 			const customerId = url.searchParams.get('customerId');
-			return customerId ? customerManager.getCustomer(customerId) : customerManager.listCustomers();
+			return customerId ? customerManager.getCustomer(env, customerId) : customerManager.listCustomers(env);
 		default:
 			return new Response('Method not allowed', { status: 405 });
 	}

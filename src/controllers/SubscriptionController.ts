@@ -2,22 +2,37 @@ import { SubscriptionManager } from '../services/subscription/SubscriptionManage
 
 export async function handleSubscriptionRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 	const subscriptionManager = new SubscriptionManager(env.MY_SUBSCRIPTION_DO);
-
 	const url = new URL(request.url);
-	const path = url.pathname;
 
-	if (request.method === 'POST' && path === '/create-subscription-plan') {
-		return subscriptionManager.createSubscriptionPlan(await request.json());
+	if (request.method === 'POST') {
+		if (url.pathname === '/create-subscription-plan') {
+			const data = await request.json();
+			return subscriptionManager.createSubscriptionPlan(env, data);
+		} else if (url.pathname === '/assign-subscription') {
+			const { customerId, planId } = await request.json();
+			return subscriptionManager.assignSubscription(env, customerId, planId);
+		} else if (url.pathname === '/change-subscription') {
+			const { customerId, oldPlanId, newPlanId, cycleStartDate, cycleEndDate } = await request.json();
+			return subscriptionManager.handleSubscriptionChange(
+				env,
+				customerId,
+				oldPlanId,
+				newPlanId,
+				new Date(cycleStartDate),
+				new Date(cycleEndDate)
+			);
+		} else if (url.pathname === '/set-plans') {
+			return subscriptionManager.setPlans(env);
+		}
 	}
 
-	if (request.method === 'POST' && path === '/assign-subscription') {
-		const { customerId, planId } = await request.json();
-		return subscriptionManager.assignSubscription(customerId, planId);
-	}
-
-	if (request.method === 'GET' && path === '/subscription') {
+	if (request.method === 'GET') {
 		const customerId = url.searchParams.get('customerId');
-		return subscriptionManager.getCustomerSubscription(customerId!);
+		return subscriptionManager.getCustomerSubscription(env, customerId!);
+	}
+
+	if (url.pathname === '/get-plans') {
+		return subscriptionManager.getPlans(env);
 	}
 
 	return new Response('Method not allowed', { status: 405 });

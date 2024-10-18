@@ -1,11 +1,16 @@
+import { handleCustomerRequest } from './controllers/CustomerController';
+import { handleSubscriptionRequest } from './controllers/SubscriptionController';
+import { handleBillingRequest } from './controllers/BillingController';
+import { handlePaymentRequest } from './controllers/PaymentController';
+import { handleInvoiceRequest } from './controllers/InvoiceController';
+import { handleInvoiceGeneration } from './cron/BillingScheduler';
+import { handleRetryFailedPayments } from './cron/PaymentScheduler';
+import { handleScheduledEvent } from './cron/MainScheduler';
 import { CustomerManager } from './services/customer/CustomerManager';
 import { SubscriptionManager } from './services/subscription/SubscriptionManager';
 import { InvoiceManager } from './services/billing/InvoiceManager';
 import { BillingManager } from './services/billing/BillingManager';
 import { PaymentManager } from './services/payment/PaymentManager';
-import { handleInvoiceGeneration } from './cron/BillingScheduler';
-import { handleRetryFailedPayments } from './cron/PaymentScheduler';
-import { handleScheduledEvent } from './cron/MainScheduler';
 
 export { CustomerManager, SubscriptionManager, InvoiceManager, BillingManager, PaymentManager };
 
@@ -13,14 +18,12 @@ export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 		const url = new URL(request.url);
 
-		// Routing for customer-related requests
-		if (url.pathname.startsWith('/customer')) {
-			const customerObjectId = env.MY_CUSTOMER_DO.idFromName('customer-instance');
-			const customerStub = env.MY_CUSTOMER_DO.get(customerObjectId);
-			return customerStub.fetch(request);
+		// Delegate customer-related requests to CustomerController
+		if (url.pathname === '/create-customer' || url.pathname.startsWith('/customer')) {
+			return handleCustomerRequest(request, env, ctx);
 		}
 
-		// Routing for subscription-related requests
+		// Delegate subscription-related requests to SubscriptionController
 		if (
 			url.pathname === '/create-subscription-plan' ||
 			url.pathname === '/assign-subscription' ||
@@ -29,40 +32,34 @@ export default {
 			url.pathname === '/set-plans' ||
 			url.pathname.startsWith('/subscription')
 		) {
-			const subscriptionObjectId = env.MY_SUBSCRIPTION_DO.idFromName('subscription-instance');
-			const subscriptionStub = env.MY_SUBSCRIPTION_DO.get(subscriptionObjectId);
-			return subscriptionStub.fetch(request);
+			return handleSubscriptionRequest(request, env, ctx);
 		}
 
-		// Routing for invoice-related requests
-		if (url.pathname === '/create-invoice' || url.pathname.startsWith('/invoices')) {
-			const invoiceObjectId = env.MY_INVOICE_DO.idFromName('invoice-instance');
-			const invoiceStub = env.MY_INVOICE_DO.get(invoiceObjectId);
-			return invoiceStub.fetch(request); // Correctly routed to InvoiceManager
-		}
-
-		// Routing for billing cycle-related requests
+		// Delegate billing-related requests to BillingController
 		if (url.pathname === '/create-billing-cycle' || url.pathname.startsWith('/billing-cycles')) {
-			const billingObjectId = env.MY_BILLING_DO.idFromName('billing-instance');
-			const billingStub = env.MY_BILLING_DO.get(billingObjectId);
-			return billingStub.fetch(request); // Correctly routed to BillingManager
+			return handleBillingRequest(request, env, ctx);
 		}
 
+		// Delegate invoice-related requests to InvoiceController
+		if (url.pathname === '/create-invoice' || url.pathname.startsWith('/invoices') || url.pathname === '/update-invoice') {
+			return handleInvoiceRequest(request, env, ctx);
+		}
+
+		// Delegate payment-related requests to PaymentController
 		if (url.pathname === '/record-payment' || url.pathname === '/retry-failed-payments') {
-			const paymentObjectId = env.MY_PAYMENT_DO.idFromName('payment-instance');
-			const paymentStub = env.MY_PAYMENT_DO.get(paymentObjectId);
-			return paymentStub.fetch(request);
+			return handlePaymentRequest(request, env, ctx);
 		}
 
-		// Manually trigger the cron logic for testing in local env
+		// Manually trigger cron jobs for testing in local environment
+
 		if (url.pathname === '/generate-customer-invoices-cron') {
 			await handleInvoiceGeneration(env);
-			return new Response('generate-customer-invoices-cron job executed successfully', { status: 200 });
+			return new Response('Cron job for generating invoices executed successfully', { status: 200 });
 		}
 
-		if (url.pathname === 'retry-failed-payments-cron') {
+		if (url.pathname === '/retry-failed-payments-cron') {
 			await handleRetryFailedPayments(env);
-			return new Response('retry-failed-payments-cron job executed successfully', { status: 200 });
+			return new Response('Cron job for retrying failed payments executed successfully', { status: 200 });
 		}
 
 		return new Response('Not found', { status: 404 });

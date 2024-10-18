@@ -11,52 +11,22 @@ export class SubscriptionManager {
 		this.env = env;
 	}
 
-	async fetch(request: Request): Promise<Response> {
-		const url = new URL(request.url);
+	async createSubscriptionPlan(env: Env, data: SubscriptionPlan): Promise<Response> {
+		try {
+			const plans: SubscriptionPlan[] = (await env.CUSTOMER_KV.get('plans', 'json')) || [];
 
-		if (request.method === 'POST' && url.pathname === '/create-subscription-plan') {
-			const data = await request.json();
-			return this.createSubscriptionPlan(data);
+			plans.push(data);
+
+			await env.CUSTOMER_KV.put('plans', JSON.stringify(plans));
+
+			return handleSuccessResponse(data, 'Subscription plan created successfully', 201);
+		} catch (error) {
+			return handleErrorResponse(error);
 		}
-
-		if (request.method === 'POST' && url.pathname === '/assign-subscription') {
-			const { customerId, planId } = await request.json();
-			return this.assignSubscription(customerId, planId);
-		}
-
-		if (request.method === 'POST' && url.pathname === '/change-subscription') {
-			const { customerId, oldPlanId, newPlanId, cycleStartDate, cycleEndDate } = await request.json();
-			return this.handleSubscriptionChange(customerId, oldPlanId, newPlanId, new Date(cycleStartDate), new Date(cycleEndDate));
-		}
-
-		if (request.method === 'GET' && url.pathname.startsWith('/subscription')) {
-			const customerId = url.searchParams.get('customerId');
-			if (customerId) {
-				return this.getCustomerSubscription(customerId);
-			}
-		}
-
-		if (url.pathname === '/get-plans') {
-			return this.getPlans();
-		}
-
-		if (url.pathname === '/set-plans') {
-			return this.setPlans();
-		}
-
-		return handleErrorResponse(new Error('Not found'));
 	}
 
-	async createSubscriptionPlan(data: SubscriptionPlan): Promise<Response> {
-		const plans: SubscriptionPlan[] = (await this.state.storage.get('plans')) || [];
-		plans.push(data);
-		await this.state.storage.put('plans', plans);
-
-		return handleSuccessResponse(data, 'Subscription plan created successfully', 201);
-	}
-
-	async assignSubscription(customerId: string, planId: string): Promise<Response> {
-		const customers = (await this.env.CUSTOMER_KV.get('customers', 'json')) || [];
+	async assignSubscription(env: Env, customerId: string, planId: string): Promise<Response> {
+		const customers = (await env.CUSTOMER_KV.get('customers', 'json')) || [];
 
 		const customer = customers.find((c) => c.id === customerId);
 		if (!customer) {
@@ -66,13 +36,13 @@ export class SubscriptionManager {
 		customer.subscription_plan_id = planId;
 		customer.subscription_status = 'active';
 
-		await this.env.CUSTOMER_KV.put('customers', JSON.stringify(customers));
+		await env.CUSTOMER_KV.put('customers', JSON.stringify(customers));
 
 		return handleSuccessResponse(customer, `Subscription assigned to customer ${customer.name}`);
 	}
 
-	async getCustomerSubscription(customerId: string): Promise<Response> {
-		const customers = (await this.env.CUSTOMER_KV.get('customers', 'json')) || [];
+	async getCustomerSubscription(env: Env, customerId: string): Promise<Response> {
+		const customers = (await env.CUSTOMER_KV.get('customers', 'json')) || [];
 		const customer = customers.find((c) => c.id === customerId);
 
 		if (!customer) {
@@ -83,6 +53,7 @@ export class SubscriptionManager {
 	}
 
 	async handleSubscriptionChange(
+		env: Env,
 		customerId: string,
 		oldPlanId: string,
 		newPlanId: string,
@@ -95,17 +66,17 @@ export class SubscriptionManager {
 			const daysUsed = (today.getTime() - cycleStartDate.getTime()) / (1000 * 60 * 60 * 24);
 			const daysRemaining = daysInCycle - daysUsed;
 
-			const plans = await this.env.CUSTOMER_KV.get('plans', 'json');
+			const plans = await env.CUSTOMER_KV.get('plans', 'json');
 			const oldPlan = plans.find((plan: any) => plan.id === oldPlanId);
 			const newPlan = plans.find((plan: any) => plan.id === newPlanId);
 
 			if (!oldPlan || !newPlan) {
+				console.error('Plan not found:', { oldPlan, newPlan });
 				return handleErrorResponse(new Error('Plan not found'));
 			}
 
 			const proratedOldPlan = (oldPlan.price / daysInCycle) * daysUsed;
 			const proratedNewPlan = (newPlan.price / daysInCycle) * daysRemaining;
-
 			const totalAmountDue = proratedOldPlan + proratedNewPlan;
 
 			const invoiceData = {
@@ -117,48 +88,68 @@ export class SubscriptionManager {
 				payment_date: null,
 			};
 
-			const billingObjectId = this.env.MY_BILLING_DO.idFromName('billing-instance');
-			const billingStub = this.env.MY_BILLING_DO.get(billingObjectId);
+			const invoiceObjectId = env.MY_INVOICE_DO.idFromName('invoice-instance');
+			const invoiceStub = env.MY_INVOICE_DO.get(invoiceObjectId);
 
-			const response = await billingStub.fetch(new Request('https://fake-url/invoices', { method: 'GET' }));
+			const response = await invoiceStub.fetch(new Request('https://fake-url/invoices/all', { method: 'GET' }));
+
+			if (!response.ok) {
+				console.error('Failed to fetch invoices from billing DO:', response.status, response.statusText);
+				return handleErrorResponse(new Error('Failed to fetch invoices from billing DO'));
+			}
+
 			let invoices = [];
 
-			if (response.ok) {
+			try {
 				invoices = await response.json();
 				if (!Array.isArray(invoices)) {
 					invoices = [];
 				}
+			} catch (error) {
+				console.error('Failed to parse invoices:', error);
+				return handleErrorResponse(new Error('Error parsing invoices'));
 			}
 
 			invoices.push(invoiceData);
 
-			await billingStub.fetch(
-				new Request('https://fake-url/invoices', {
-					method: 'POST',
-					body: JSON.stringify(invoices),
+			const saveResponse = await invoiceStub.fetch(
+				new Request('https://fake-url/invoices/update', {
+					method: 'PUT',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({ data: invoices }),
 				})
 			);
 
+			if (!saveResponse.ok) {
+				console.error('Failed to save updated invoices:', saveResponse.status, saveResponse.statusText);
+				return handleErrorResponse(new Error('Failed to save updated invoices'));
+			}
+
+			console.log('Prorated invoice generated for customer:', customerId);
 			return handleSuccessResponse(invoiceData, `Prorated invoice generated for customer ${customerId}`, 201);
 		} catch (error) {
-			return handleErrorResponse(error);
+			console.error('Error handling subscription change:', error);
+			return handleErrorResponse(new Error('internal error'));
 		}
 	}
 
-	async setPlans(): Promise<Response> {
+	async setPlans(env: Env): Promise<Response> {
 		const plans = [
 			{ id: '1', name: 'Basic Plan', billing_cycle: 'monthly', price: 10, status: 'active' },
 			{ id: '2', name: 'Premium Plan', billing_cycle: 'monthly', price: 20, status: 'active' },
 			{ id: '3', name: 'Enterprise Plan', billing_cycle: 'yearly', price: 50, status: 'active' },
 		];
 
-		await this.env.CUSTOMER_KV.put('plans', JSON.stringify(plans));
+		await env.CUSTOMER_KV.put('plans', JSON.stringify(plans));
 
 		return new Response('Plans stored in KV', { status: 201 });
 	}
 
-	async getPlans(): Promise<Response> {
-		let plans = plansRaw ? JSON.parse(plansRaw) : null;
+	async getPlans(env: Env): Promise<Response> {
+		const plansRaw = await env.CUSTOMER_KV.get('plans', 'json');
+		const plans = plansRaw ? JSON.parse(plansRaw) : null;
 
 		if (!plans || plans.length === 0) {
 			return new Response(JSON.stringify({ error: 'No plans found' }), {

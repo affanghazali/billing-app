@@ -1,33 +1,29 @@
-import { InvoiceManager } from '../services/billing/InvoiceManager';
 import { BillingManager } from '../services/billing/BillingManager';
 
 export async function handleBillingRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+	const billingObjectId = env.MY_BILLING_DO.idFromName('billing-instance');
+	const billingStub = env.MY_BILLING_DO.get(billingObjectId);
+
 	const url = new URL(request.url);
+	const clonedRequest = request.clone();
 
-	const invoiceManager = new InvoiceManager(env.MY_BILLING_DO, env);
-	const billingManager = new BillingManager(env.MY_BILLING_DO, env);
-
-	// Routes for invoices
-	if (url.pathname === '/create-invoice' && request.method === 'POST') {
-		const invoiceData = await request.json();
-		return invoiceManager.createInvoice(invoiceData);
+	if (request.method === 'POST' && url.pathname === '/create-billing-cycle') {
+		const billingCycleData = await clonedRequest.json();
+		return billingStub.fetch(
+			new Request('https://fake-url/create-billing-cycle', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({ data: billingCycleData }),
+			})
+		);
 	}
 
-	if (url.pathname.startsWith('/invoices') && request.method === 'GET') {
+	if (request.method === 'GET' && url.pathname.startsWith('/billing-cycles')) {
 		const customerId = url.searchParams.get('customerId');
-		return invoiceManager.getInvoicesForCustomer(customerId!);
+		return billingStub.fetch(new Request(`https://fake-url/billing-cycles?customerId=${customerId}`, { method: 'GET' }));
 	}
 
-	// Routes for billing cycle
-	if (url.pathname === '/create-billing-cycle' && request.method === 'POST') {
-		const billingCycleData = await request.json();
-		return billingManager.createBillingCycle(billingCycleData);
-	}
-
-	if (url.pathname.startsWith('/billing-cycles') && request.method === 'GET') {
-		const customerId = url.searchParams.get('customerId');
-		return billingManager.getBillingCyclesForCustomer(customerId!);
-	}
-
-	return new Response('Not found', { status: 404 });
+	return new Response('Method not allowed', { status: 405 });
 }
