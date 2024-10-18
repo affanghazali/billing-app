@@ -4,26 +4,6 @@ A Simple Billing App for a SaaS Platform Using Cloudflare Workers
 
 This project is a billing system for a SaaS platform, built using Cloudflare Workers and Durable Objects. It supports billing cycle management, invoicing, and subscription handling, along with retrying failed payments, and sending email notifications via SendGrid.
 
-```bash
-cd billing-app
-```
-
-```bash
-wrangler kv namespace create CUSTOMER_KV
-```
-
-```bash
-wrangler kv:key put --namespace-id <your-namespace-id> plans '[
-{ "id": "basic", "name": "Basic Plan", "billing_cycle": "monthly", "price": 10, "status": "active" },
-{ "id": "premium", "name": "Premium Plan", "billing_cycle": "monthly", "price": 20, "status": "active" },
-{ "id": "enterprise", "name": "Enterprise Plan", "billing_cycle": "yearly", "price": 50, "status": "active" }
-]'
-```
-
-```bash
-wrangler secret put SENDGRID_API_KEY# Billing App for SaaS Platform
-```
-
 ## Features
 
 - **Subscription Management**: Create subscription plans and assign them to customers.
