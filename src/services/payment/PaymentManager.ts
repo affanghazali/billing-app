@@ -49,6 +49,7 @@ export class PaymentManager {
 				invoice.paid_at = new Date().toISOString();
 				await this.notifyPaymentSuccess(invoice.customer_id, invoice);
 			} else {
+				invoice.status = 'failed';
 				await this.notifyPaymentFailure(invoice.customer_id, invoice);
 				return handleErrorResponse(new Error('Payment amount is insufficient'));
 			}
